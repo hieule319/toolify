@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tính lương thực nhận (có 10,5% BH + % công đoàn)</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #f4f6f8;
+      padding: 24px;
+    }
+
+    .card {
+      max-width: 720px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 20px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .06);
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 12px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      margin: 14px 0 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #d5d8df;
+      border-radius: 12px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, .15);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .row>div {
+      flex: 1;
+    }
+
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: 800;
+      border: 0;
+      border-radius: 12px;
+      cursor: pointer;
+      background: #0ea5e9;
+      color: #fff;
+    }
+
+    .result {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #f1f5f9;
+    }
+
+    .line {
+      display: flex;
+      justify-content: space-between;
+      margin: 6px 0;
+      gap: 12px;
+    }
+
+    .muted {
+      color: #637187;
+      font-size: 13px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 10px 0;
+    }
+
+    .badge {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef6ff;
+      border: 1px solid #cfe6ff;
+    }
+
+    details {
+      margin-top: 6px;
+    }
+
+    details summary {
+      cursor: pointer;
+      color: #0f5;
+      color: #0ea5e9;
+    }
+
+    ul.inline {
+      margin: 6px 0 0 18px;
+      padding: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Tính lương thực nhận</h1>
+    <p class="muted">
+      Công thức: Thu nhập tính thuế = <b>Gross − (Lương đóng BH × 10,5%) − (Gross × % Công đoàn) −
+        11.000.000₫</b>.<br />
+      Sau đó áp biểu thuế lũy tiến để tính Thuế TNCN. <span class="badge">Giả định theo tháng</span> Tính theo công thức tháng 7/2025
+    </p>
+
+    <label for="gross">Tổng thu nhập (gross) / tháng (₫)</label>
+    <input id="gross" type="text" inputmode="numeric" placeholder="VD: 30.000.000" />
+
+    <div class="row">
+      <div>
+        <label for="insBase">Lương làm căn cứ đóng BH (₫)</label>
+        <input id="insBase" type="text" inputmode="numeric" placeholder="VD: 20.000.000" />
+        <p class="muted" style="margin:6px 0 0">
+          Tiền BH sẽ = <b>lương này × 10,5%</b>.
+        </p>
+        <!-- ✨ Bổ sung chi tiết tỉ lệ -->
+        <details class="muted">
+          <summary>Chi tiết 10,5% gồm những gì?</summary>
+          <ul class="inline">
+            <li>BHXH (người lao động): <b>8%</b></li>
+            <li>BHYT (người lao động): <b>1,5%</b></li>
+            <li>BHTN (người lao động): <b>1%</b></li>
+            <li><b>Tổng</b>: 8% + 1,5% + 1% = <b>10,5%</b></li>
+          </ul>
+        </details>
+      </div>
+      <div>
+        <label for="union">Kinh phí công đoàn (%)</label>
+        <input id="union" type="text" inputmode="decimal" placeholder="VD: 1" />
+        <p class="muted" style="margin:6px 0 0">Hệ thống tính <b>Gross × %</b> bạn nhập.</p>
+      </div>
+    </div>
+
+    <button id="btn">Tính toán</button>
+
+    <div id="out" class="result" style="display:none;"></div>
+  </div>
+
+  <script>
+    const fmt = new Intl.NumberFormat('vi-VN');
+
+    // Biểu thuế lũy tiến (thu nhập tính thuế theo tháng)
+    const BRACKETS = [
+      [5_000_000, 0.05],
+      [10_000_000, 0.10],
+      [18_000_000, 0.15],
+      [32_000_000, 0.20],
+      [52_000_000, 0.25],
+      [80_000_000, 0.30],
+      [Infinity, 0.35],
+    ];
+    const STANDARD_DEDUCTION = 15_500_000;
+    const INS_RATE = 0.105; // 10,5%
+
+    // ---- Helpers: định dạng nhập liệu ----
+    function parseDigits(el) {
+      const raw = el.value.replace(/[^\d]/g, '');
+      return raw ? Number(raw) : 0;
+    }
+    function parsePercent(el) {
+      const raw = el.value.replace(',', '.').replace(/[^\d.]/g, '');
+      return raw ? Number(raw) : 0;
+    }
+    function formatCurrencyInput(el) {
+      const n = parseDigits(el);
+      el.value = n ? fmt.format(n) : '';
+      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
+    }
+    ['gross', 'insBase'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', () => formatCurrencyInput(el));
+      el.addEventListener('blur', () => formatCurrencyInput(el));
+    });
+
+    function calcPIT(taxable) {
+      if (taxable <= 0) return 0;
+      let remaining = taxable, prev = 0, tax = 0;
+      for (const [cap, rate] of BRACKETS) {
+        const span = Math.min(remaining, cap - prev);
+        if (span > 0) {
+          tax += span * rate;
+          remaining -= span;
+          prev = cap;
+        }
+        if (remaining <= 0) break;
+      }
+      return tax;
+    }
+
+    function calc() {
+      const gross = parseDigits(document.getElementById('gross'));
+      const insBase = parseDigits(document.getElementById('insBase'));
+      const unionPct = parsePercent(document.getElementById('union')); // nhập theo %
+      if (gross <= 0) {
+        show(`<div class="line"><span>Vui lòng nhập tổng thu nhập &gt; 0</span></div>`);
+        return;
+      }
+
+      const insMoney = Math.round(insBase * INS_RATE);
+      const unionMoney = Math.round(gross * (unionPct / 100));
+
+      const afterContrib = Math.max(0, gross - insMoney - unionMoney);
+      const taxableBase = Math.max(0, afterContrib - STANDARD_DEDUCTION);
+      const pit = Math.round(calcPIT(taxableBase));
+      const net = Math.max(0, Math.round(afterContrib - pit));
+
+      const outHtml = `
+        <div class="line"><span>Tổng thu nhập (Gross):</span><strong>${fmt.format(gross)} ₫</strong></div>
+        <div class="line"><span>Tiền BH (10,5% × lương đóng BH):</span><strong>- ${fmt.format(insMoney)} ₫</strong></div>
+        <div class="line"><span>Kinh phí công đoàn (${unionPct || 0}% × Gross):</span><strong>- ${fmt.format(unionMoney)} ₫</strong></div>
+        <hr/>
+        <div class="line"><span>Thu nhập sau các khoản đóng:</span><strong>${fmt.format(afterContrib)} ₫</strong></div>
+        <div class="line"><span>Khấu trừ bản thân:</span><strong>- ${fmt.format(STANDARD_DEDUCTION)} ₫</strong></div>
+        <div class="line"><span>Thu nhập tính thuế:</span><strong>${fmt.format(taxableBase)} ₫</strong></div>
+        <div class="line"><span>Thuế TNCN ước tính:</span><strong>- ${fmt.format(pit)} ₫</strong></div>
+        <hr/>
+        <div class="line" style="font-size:18px;"><span><b>Thực nhận (Net):</b></span><strong>${fmt.format(net)} ₫</strong></div>
+        <p class="muted">*Tiền BH = 8% BHXH + 1,5% BHYT + 1% BHTN (tổng 10,5%); kết quả mang tính tham khảo.</p>
+      `;
+      show(outHtml);
+    }
+
+    function show(html) {
+      const out = document.getElementById('out');
+      out.style.display = 'block';
+      out.innerHTML = html;
+    }
+
+    document.getElementById('btn').addEventListener('click', calc);
+  </script>
+</body>
+
+</html>
